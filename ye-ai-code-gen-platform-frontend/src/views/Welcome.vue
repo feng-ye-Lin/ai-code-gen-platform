@@ -1,5 +1,5 @@
 <template>
-  <div class="logo-page">
+  <div class="welcome-page">
     <div class="background-gradient"></div>
     
     <div class="content">
@@ -61,7 +61,7 @@ const enterPlatform = () => {
 </script>
 
 <style scoped>
-.logo-page {
+.welcome-page {
   position: relative;
   min-height: 100vh;
   display: flex;

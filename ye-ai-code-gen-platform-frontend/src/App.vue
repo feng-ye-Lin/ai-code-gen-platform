@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import BasicLayout from '@/layouts/BasicLayout.vue'
+
+const route = useRoute()
+const isWelcomePage = computed(() => route.path === '/')
 </script>
 
 <template>
-  <RouterView />
+  <BasicLayout v-if="!isWelcomePage" />
+  <RouterView v-else />
 </template>
 
 <style>
