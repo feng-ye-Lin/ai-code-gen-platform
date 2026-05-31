@@ -2,6 +2,12 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import BasicLayout from '@/layouts/BasicLayout.vue'
+import { healthCheck } from '@/api/healthController.ts'
+
+healthCheck().then((res) => {
+  console.log(res)
+})
+
 
 const route = useRoute()
 const isWelcomePage = computed(() => route.path === '/')
