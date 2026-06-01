@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { message } from 'ant-design-vue'
 import type { ItemType } from 'ant-design-vue'
 import Logo from '@/components/Logo.vue'
+import { useLoginUserStore } from '@/stores/loginUser.ts'
+import { userLogout } from '@/api/userController.ts'
 
 export interface MenuItem {
   key: string
@@ -19,7 +22,7 @@ const props = withDefaults(
   {
     menuItems: () => [],
     title: 'YeCode 零代码应用生成平台',
-  }
+  },
 )
 
 const router = useRouter()
@@ -27,15 +30,37 @@ const route = useRoute()
 
 const selectedKeys = ref<string[]>([route.path])
 
+const loginUserStore = useLoginUserStore()
+
 watch(
   () => route.path,
   (path) => {
     selectedKeys.value = [path]
-  }
+  },
 )
 
 function handleMenuClick({ key }: { key: string }) {
   router.push(key)
+}
+
+function handleLogin() {
+  router.push('/user/login')
+}
+
+async function handleLogout() {
+  try {
+    const res = await userLogout()
+    if (res.data.code === 0) {
+      message.success('退出登录成功')
+      loginUserStore.clearLoginUser()
+      router.push('/user/login')
+    } else {
+      message.error(res.data.message ?? '退出登录失败')
+    }
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : '退出登录失败'
+    message.error(errorMessage)
+  }
 }
 
 function convertToAntdMenu(items: MenuItem[]): ItemType[] {
@@ -71,7 +96,24 @@ function convertToAntdMenu(items: MenuItem[]): ItemType[] {
     />
 
     <div class="header-right">
-      <a-button type="primary" size="small" class="login-btn">登录</a-button>
+      <div v-if="loginUserStore.loginUser.id">
+        <a-dropdown>
+          <a-space class="user-info" style="cursor: pointer">
+            <a-avatar :src="loginUserStore.loginUser.userAvatar" />
+            <span>{{ loginUserStore.loginUser.userName ?? '无名' }}</span>
+          </a-space>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item key="logout" @click="handleLogout">
+                <span>退出登录</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
+      <div v-else>
+        <a-button type="primary" size="small" class="login-btn" @click="handleLogin">登录</a-button>
+      </div>
     </div>
   </a-layout-header>
 </template>
@@ -116,7 +158,7 @@ function convertToAntdMenu(items: MenuItem[]): ItemType[] {
 .header-title {
   font-size: 18px;
   font-weight: 700;
-  background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%);
+  background: linear-gradient(135deg, #d32f2f 0%, #ff7043 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -140,19 +182,27 @@ function convertToAntdMenu(items: MenuItem[]): ItemType[] {
 }
 
 .header-menu :deep(.ant-menu-item-selected) {
-  color: #D32F2F;
+  color: #d32f2f;
 }
 
 .header-menu :deep(.ant-menu-item-selected::after) {
-  border-bottom-color: #D32F2F;
+  border-bottom-color: #d32f2f;
 }
 
 .header-right {
   flex-shrink: 0;
 }
 
+.user-info {
+  transition: opacity 0.2s;
+}
+
+.user-info:hover {
+  opacity: 0.7;
+}
+
 .login-btn {
-  background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%);
+  background: linear-gradient(135deg, #d32f2f 0%, #ff7043 100%);
   border: none;
   box-shadow: 0 2px 8px rgba(211, 47, 47, 0.25);
   border-radius: 16px;

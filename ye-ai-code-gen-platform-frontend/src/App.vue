@@ -3,19 +3,25 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import BasicLayout from '@/layouts/BasicLayout.vue'
 import { healthCheck } from '@/api/healthController.ts'
+import { useLoginUserStore } from '@/stores/loginUser.ts'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
 
 healthCheck().then((res) => {
   console.log(res)
 })
 
-
 const route = useRoute()
 const isWelcomePage = computed(() => route.path === '/')
+
+const loginUserStore = useLoginUserStore()
+loginUserStore.fetchLoginUser()
 </script>
 
 <template>
-  <BasicLayout v-if="!isWelcomePage" />
-  <RouterView v-else />
+  <a-config-provider :locale="zhCN">
+    <BasicLayout v-if="!isWelcomePage" />
+    <RouterView v-else />
+  </a-config-provider>
 </template>
 
 <style>
