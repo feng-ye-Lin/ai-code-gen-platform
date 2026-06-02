@@ -47,6 +47,10 @@ function handleLogin() {
   router.push('/user/login')
 }
 
+function handleProfile() {
+  router.push('/user/profile')
+}
+
 async function handleLogout() {
   try {
     const res = await userLogout()
@@ -104,6 +108,9 @@ function convertToAntdMenu(items: MenuItem[]): ItemType[] {
           </a-space>
           <template #overlay>
             <a-menu>
+              <a-menu-item key="profile" @click="handleProfile">
+                <span>个人中心</span>
+              </a-menu-item>
               <a-menu-item key="logout" @click="handleLogout">
                 <span>退出登录</span>
               </a-menu-item>

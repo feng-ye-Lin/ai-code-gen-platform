@@ -3,6 +3,7 @@ import WelcomePage from '../pages/WelcomePage.vue'
 import HomePage from '../pages/HomePage.vue'
 import UserLoginPage from '@/pages/user/UserLoginPage.vue'
 import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
+import UserProfilePage from '@/pages/user/UserProfilePage.vue'
 import UserManagePage from '@/pages/admin/UserManagePage.vue'
 
 const router = createRouter({
@@ -37,6 +38,11 @@ const router = createRouter({
       path: '/admin/userManage',
       name: '用户管理',
       component: UserManagePage,
+    },
+    {
+      path: '/user/profile',
+      name: '个人中心',
+      component: UserProfilePage,
     },
   ],
 })

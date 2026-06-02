@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { listUserVoByPage, deleteUser } from '@/api/userController.ts'
+import { listUserVoByPage, deleteUser, updateUser } from '@/api/userController.ts'
 import type { ColumnsType } from 'ant-design-vue/es/table'
+import type { FormInstance } from 'ant-design-vue'
 
 // 数据
 const data = ref<API.UserVO[]>([])
 const total = ref(0)
 const loading = ref(false)
+
+// 编辑相关
+const editingKey = ref<string | number>('')
+const formRef = ref<FormInstance>()
+const formModel = reactive<Record<string, any>>({})
 
 // 搜索条件
 const searchParams = reactive<API.UserQueryRequest>({
@@ -52,6 +58,17 @@ const columns: ColumnsType<API.UserVO> = [
   },
 ]
 
+// 开始编辑
+const edit = (record: Partial<API.UserVO>) => {
+  editingKey.value = record.id!
+  formModel[record.id!] = { ...record }
+}
+
+// 取消编辑
+const cancel = () => {
+  editingKey.value = ''
+}
+
 // 获取数据
 const fetchData = async () => {
   loading.value = true
@@ -81,6 +98,45 @@ onMounted(() => {
 const doSearch = () => {
   searchParams.pageNum = 1
   fetchData()
+}
+
+// 保存编辑
+const save = async (key: string | number) => {
+  try {
+    await formRef.value?.validateFields()
+    const row = formModel[key] as API.UserUpdateRequest
+    Modal.confirm({
+      title: '确认保存',
+      content: '您确定要保存修改吗？',
+      okText: '确认',
+      okType: 'primary',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const index = data.value.findIndex((item) => key === item.id)
+          const item = data.value[index]
+          const res = await updateUser({
+            id: item.id,
+            userName: row.userName || item.userName,
+            userAvatar: row.userAvatar || item.userAvatar,
+            userProfile: row.userProfile || item.userProfile,
+            userRole: row.userRole || item.userRole,
+          })
+          if (res.data.code === 0) {
+            message.success('保存成功')
+            editingKey.value = ''
+            fetchData()
+          } else {
+            message.error('保存失败，' + res.data.message)
+          }
+        } catch (error) {
+          message.error('保存失败')
+        }
+      },
+    })
+  } catch (errInfo) {
+    console.log('Validate Failed:', errInfo)
+  }
 }
 
 // 删除数据
@@ -134,39 +190,86 @@ const handlePageChange = (page: number, pageSize: number) => {
     </a-form>
     <a-divider />
     <!-- 表格 -->
-    <a-table
-      :columns="columns"
-      :data-source="data"
-      :loading="loading"
-      :pagination="{
-        current: searchParams.pageNum,
-        pageSize: searchParams.pageSize,
-        total: total,
-        showSizeChanger: true,
-        showQuickJumper: true,
-        showTotal: (total) => `共 ${total} 条`,
-        pageSizeOptions: ['10', '20', '50', '100'],
-      }"
-      @change="handlePageChange"
-      row-key="id"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'userAvatar'">
-          <img v-if="record.userAvatar" :src="record.userAvatar" style="width: 40px; height: 40px; border-radius: 50%;" />
+    <a-form ref="formRef" :model="formModel">
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :loading="loading"
+        :pagination="{
+          current: searchParams.pageNum,
+          pageSize: searchParams.pageSize,
+          total: total,
+          showSizeChanger: true,
+          showQuickJumper: true,
+          showTotal: (total) => `共 ${total} 条`,
+          pageSizeOptions: ['10', '20', '50', '100'],
+        }"
+        @change="handlePageChange"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'userAvatar'">
+            <template v-if="editingKey === record.id">
+              <a-form-item
+                :name="[record.id as string, 'userAvatar']"
+                style="margin-bottom: 0;"
+              >
+                <a-input v-model:value="formModel[record.id].userAvatar" />
+              </a-form-item>
+            </template>
+            <template v-else>
+              <img v-if="record.userAvatar" :src="record.userAvatar" style="width: 40px; height: 40px; border-radius: 50%;" />
+            </template>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <template v-if="editingKey === record.id">
+              <a-space>
+                <a-button type="primary" size="small" style="cursor: pointer;" @click="save(record.id)">
+                  保存
+                </a-button>
+                <a-button size="small" style="cursor: pointer;" @click="cancel">
+                  取消
+                </a-button>
+              </a-space>
+            </template>
+            <template v-else>
+              <a-space>
+                <a-button type="link" size="small" style="cursor: pointer;" @click="edit(record)">
+                  编辑
+                </a-button>
+                <a-button
+                  type="primary"
+                  danger
+                  size="small"
+                  style="cursor: pointer; background-color: #ff4d4f; border-color: #ff4d4f;"
+                  @click="doDelete(record.id as string)"
+                >
+                  删除
+                </a-button>
+              </a-space>
+            </template>
+          </template>
+          <template v-else-if="['userName', 'userProfile', 'userRole'].includes(column.dataIndex)">
+            <template v-if="editingKey === record.id">
+              <a-form-item
+                :name="[record.id as string, column.dataIndex]"
+                :rules="column.dataIndex === 'userRole' ? [{ required: true, message: '必填项' }] : []"
+                style="margin-bottom: 0;"
+              >
+                <a-input v-if="column.dataIndex !== 'userRole'" v-model:value="formModel[record.id][column.dataIndex]" />
+                <a-select v-else v-model:value="formModel[record.id][column.dataIndex]" style="width: 100%;">
+                  <a-select-option value="user">普通用户</a-select-option>
+                  <a-select-option value="admin">管理员</a-select-option>
+                </a-select>
+              </a-form-item>
+            </template>
+            <template v-else>
+              {{ (record as any)[column.dataIndex] }}
+            </template>
+          </template>
         </template>
-        <template v-if="column.key === 'action'">
-          <a-button
-            type="primary"
-            danger
-            size="small"
-            style="cursor: pointer; background-color: #ff4d4f; border-color: #ff4d4f;"
-            @click="doDelete(record.id as string)"
-          >
-            删除
-          </a-button>
-        </template>
-      </template>
-    </a-table>
+      </a-table>
+    </a-form>
   </div>
 </template>
 
