@@ -22,5 +22,5 @@ public interface UserConstant {
      */
     String ADMIN_ROLE = "admin";
 
-    // end region
+    // endregion
 }
