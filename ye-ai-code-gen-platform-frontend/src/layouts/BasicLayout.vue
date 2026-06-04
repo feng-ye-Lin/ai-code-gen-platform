@@ -25,12 +25,17 @@ const menuItems = computed<MenuItem[]>(() => {
       path: '/about',
     },
   ]
-  // 仅当用户角色为 admin 时显示用户管理菜单
+  // 仅当用户角色为 admin 时显示管理菜单
   if (loginUserStore.loginUser.userRole === 'admin') {
     items.push({
       key: '/admin/userManage',
       label: '用户管理',
       path: '/admin/userManage',
+    })
+    items.push({
+      key: '/admin/appManage',
+      label: '应用管理',
+      path: '/admin/appManage',
     })
   }
   return items
@@ -49,14 +54,18 @@ const menuItems = computed<MenuItem[]>(() => {
 
 <style scoped>
 .basic-layout {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .basic-layout-content {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 8px;
   background: #f5f5f5;
+  position: relative;
 }
 </style>

@@ -159,7 +159,7 @@ const doDelete = (id: string) => {
         } else {
           message.error('删除失败，' + res.data.message)
         }
-      } catch (error) {
+      } catch {
         message.error('删除失败')
       }
     },
@@ -201,7 +201,7 @@ const handlePageChange = (page: number, pageSize: number) => {
           total: total,
           showSizeChanger: true,
           showQuickJumper: true,
-          showTotal: (total) => `共 ${total} 条`,
+          showTotal: (total: number) => `共 ${total} 条`,
           pageSizeOptions: ['10', '20', '50', '100'],
         }"
         @change="handlePageChange"
