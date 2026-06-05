@@ -8,6 +8,7 @@ import {
   updateAppByAdmin,
 } from '@/api/appController'
 import type { ColumnsType } from 'ant-design-vue/es/table'
+import { CODE_GEN_TYPE_OPTIONS, getCodeGenTypeLabel } from '@/constants/codeGenType'
 
 const router = useRouter()
 
@@ -73,7 +74,9 @@ const columns: ColumnsType<API.AppVO> = [
 const fetchData = async () => {
   loading.value = true
   try {
-    const res = await listAppVoByPageByAdmin(searchParams)
+    const res = await listAppVoByPageByAdmin({
+      ...searchParams,
+    })
     if (res.data.data) {
       data.value = res.data.data.records ?? []
       total.value = res.data.data.totalRow ?? 0
@@ -101,6 +104,7 @@ const doSearch = () => {
 // 重置搜索
 const resetSearch = () => {
   searchParams.appName = undefined
+  searchParams.codeGenType = undefined
   searchParams.pageNum = 1
   fetchData()
 }
@@ -194,9 +198,9 @@ const cancelFeatured = async (record: API.AppVO) => {
 }
 
 // 分页变化
-const handlePageChange = (page: number, pageSize: number) => {
-  searchParams.pageNum = page
-  searchParams.pageSize = pageSize
+const handlePageChange = (pagination: any) => {
+  searchParams.pageNum = pagination.current
+  searchParams.pageSize = pagination.pageSize
   fetchData()
 }
 </script>
@@ -212,6 +216,15 @@ const handlePageChange = (page: number, pageSize: number) => {
           allow-clear
         />
       </a-form-item>
+      <a-form-item label="类型">
+        <a-select
+          v-model:value="searchParams.codeGenType"
+          placeholder="选择类型"
+          :options="CODE_GEN_TYPE_OPTIONS"
+          allow-clear
+          style="width: 160px"
+        />
+      </a-form-item>
       <a-form-item>
         <a-space>
           <a-button type="primary" html-type="submit">搜索</a-button>
@@ -221,60 +234,62 @@ const handlePageChange = (page: number, pageSize: number) => {
     </a-form>
     <a-divider />
     <!-- 表格 -->
-    <a-table
-      :columns="columns"
-      :data-source="data"
-      :loading="loading"
-      :pagination="{
-        current: searchParams.pageNum,
-        pageSize: searchParams.pageSize,
-        total: total,
-        showSizeChanger: true,
-        showQuickJumper: true,
-        showTotal: (total: number) => `共 ${total} 条`,
-        pageSizeOptions: ['10', '20', '50', '100'],
-      }"
-      @change="handlePageChange"
-      row-key="id"
-      :scroll="{ x: 1200 }"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'cover'">
-          <img v-if="record.cover" :src="record.cover" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px;" />
-          <span v-else>-</span>
+    <a-form ref="formRef" :model="formModel">
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :loading="loading"
+        :pagination="{
+          current: searchParams.pageNum,
+          pageSize: searchParams.pageSize,
+          total: total,
+          showSizeChanger: true,
+          showQuickJumper: true,
+          showTotal: (total: number) => `共 ${total} 条`,
+          pageSizeOptions: ['10', '20', '50', '100'],
+        }"
+        @change="handlePageChange"
+        row-key="id"
+        :scroll="{ x: 1200 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'cover'">
+            <img v-if="record.cover" :src="record.cover" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px;" />
+            <span v-else>-</span>
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="goToDetail(record)">
+                查看
+              </a-button>
+              <a-button type="link" size="small" @click="goToEdit(record)">
+                编辑
+              </a-button>
+              <template v-if="record.priority === 99">
+                <a-button type="link" size="small" @click="cancelFeatured(record)">
+                  取消精选
+                </a-button>
+              </template>
+              <template v-else>
+                <a-button type="link" size="small" @click="setFeatured(record)">
+                  设为精选
+                </a-button>
+              </template>
+              <a-popconfirm
+                title="确认删除？"
+                ok-text="确认"
+                cancel-text="取消"
+                @confirm="doDelete(record)"
+              >
+                <a-button type="link" size="small" danger>
+                  删除
+                </a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
         </template>
-        <template v-if="column.key === 'action'">
-          <a-space>
-            <a-button type="link" size="small" @click="goToDetail(record)">
-              查看
-            </a-button>
-            <a-button type="link" size="small" @click="goToEdit(record)">
-              编辑
-            </a-button>
-            <template v-if="record.priority === 99">
-              <a-button type="link" size="small" @click="cancelFeatured(record)">
-                取消精选
-              </a-button>
-            </template>
-            <template v-else>
-              <a-button type="link" size="small" @click="setFeatured(record)">
-                设为精选
-              </a-button>
-            </template>
-            <a-popconfirm
-              title="确认删除？"
-              ok-text="确认"
-              cancel-text="取消"
-              @confirm="doDelete(record)"
-            >
-              <a-button type="link" size="small" danger>
-                删除
-              </a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
-      </template>
-    </a-table>
+      </a-table>
+    </a-form>
   </div>
 </template>
 

@@ -167,9 +167,9 @@ const doDelete = (id: string) => {
 }
 
 // 分页变化
-const handlePageChange = (page: number, pageSize: number) => {
-  searchParams.pageNum = page
-  searchParams.pageSize = pageSize
+const handlePageChange = (pagination: any) => {
+  searchParams.pageNum = pagination.current
+  searchParams.pageSize = pagination.pageSize
   fetchData()
 }
 </script>

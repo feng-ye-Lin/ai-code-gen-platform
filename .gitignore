@@ -69,3 +69,6 @@ ye-ai-code-gen-platform-frontend/coverage/
 ye-ai-code-gen-platform-frontend/*.local
 ye-ai-code-gen-platform-frontend/*.tsbuildinfo
 ye-ai-code-gen-platform-frontend/.DS_Store
+
+### CUSTOM ###
+application-local.yml

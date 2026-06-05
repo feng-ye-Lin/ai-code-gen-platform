@@ -12,6 +12,30 @@ const loginUserStore = useLoginUserStore()
 const promptInput = ref('')
 const loadingCreate = ref(false)
 
+// 快捷提示词
+const quickPrompts = [
+  {
+    icon: '📝',
+    title: '个人博客',
+    prompt: '帮我创建一个个人博客网站，包含首页展示最新文章列表、文章详情页、关于我页面和标签分类功能。首页采用卡片式布局展示文章，支持按时间倒序排列，点击文章卡片进入详情页阅读全文。整体风格简洁现代，配色使用深蓝和白色为主，响应式设计适配手机和电脑端。',
+  },
+  {
+    icon: '🛒',
+    title: '电商落地页',
+    prompt: '帮我创建一个电商产品落地页，包含顶部导航栏、轮播横幅广告区、热门商品推荐网格、限时秒杀倒计时模块、用户评价展示区和底部页脚。商品卡片包含图片、名称、价格和购买按钮。整体采用红白配色，突出促销氛围，页面滚动时导航栏固定在顶部。',
+  },
+  {
+    icon: '💼',
+    title: '作品集展示',
+    prompt: '帮我创建一个个人作品集展示网站，包含顶部个人介绍区域、作品展示网格、技能标签云和联系方式区域。作品展示采用瀑布流布局，每个作品卡片包含封面图、标题和简短描述，hover 时展示详情遮罩。整体风格为暗色系科技感，使用深灰背景搭配青色高亮。',
+  },
+  {
+    icon: '📊',
+    title: '数据仪表盘',
+    prompt: '帮我创建一个数据仪表盘页面，包含顶部统计卡片（用户数、收入、订单量、转化率）、折线图趋势区、柱状图对比区和最近订单列表。统计卡片带有图标和环比增长率显示，图表区域使用 Canvas 绘制。整体采用深色主题，配色以深蓝背景搭配蓝绿渐变图表。',
+  },
+]
+
 // 我的应用列表
 const myApps = ref<API.AppVO[]>([])
 const myAppsTotal = ref(0)
@@ -107,7 +131,8 @@ const goToApp = (appId: string) => {
 // 查看部署的作品
 const viewWork = (app: API.AppVO) => {
   if (!app.deployKey) return
-  window.open(`http://localhost/${app.deployKey}`, '_blank')
+  const deployDomain = import.meta.env.VITE_DEPLOY_DOMAIN
+  window.open(`${deployDomain}/${app.deployKey}/`, '_blank')
 }
 
 // 我的应用分页
@@ -141,7 +166,7 @@ onMounted(() => {
       <div class="input-section">
         <a-textarea
           v-model:value="promptInput"
-          placeholder="输入你想要的应用描述，例如：创建一个待办事项应用"
+          placeholder="帮我创建个人博客网站"
           :rows="4"
           :auto-size="{ minRows: 4, maxRows: 8 }"
           class="prompt-input"
@@ -156,6 +181,19 @@ onMounted(() => {
           >
             开始创建
           </a-button>
+        </div>
+      </div>
+
+      <!-- 快捷提示词 -->
+      <div class="quick-prompts">
+        <div
+          v-for="(item, index) in quickPrompts"
+          :key="index"
+          class="quick-prompt-card"
+          @click="promptInput = item.prompt"
+        >
+          <div class="quick-prompt-icon">{{ item.icon }}</div>
+          <div class="quick-prompt-text">{{ item.title }}</div>
         </div>
       </div>
     </div>
@@ -197,8 +235,11 @@ onMounted(() => {
               </div>
             </div>
             <div class="app-info">
-              <h3 class="app-name">{{ app.appName }}</h3>
-              <p class="app-time">创建于 {{ app.createTime }}</p>
+              <a-avatar :src="app.user?.userAvatar" size="small" class="app-avatar" />
+              <div class="app-info-text">
+                <h3 class="app-name">{{ app.appName }}</h3>
+                <span class="app-author">{{ app.user?.userName || '我' }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -252,11 +293,10 @@ onMounted(() => {
               </div>
             </div>
             <div class="app-info">
-              <h3 class="app-name">{{ app.appName }}</h3>
-              <div class="app-meta">
-                <span v-if="app.user?.userName" class="app-author">
-                  {{ app.user.userName }}
-                </span>
+              <a-avatar :src="app.user?.userAvatar" size="small" class="app-avatar" />
+              <div class="app-info-text">
+                <h3 class="app-name">{{ app.appName }}</h3>
+                <span class="app-author">{{ app.user?.userName || '未知用户' }}</span>
               </div>
             </div>
           </div>
@@ -320,12 +360,46 @@ export default defineComponent({
 <style scoped>
 .home-page {
   min-height: 100%;
+  background: linear-gradient(135deg, #FDFBFF 0%, #FFF5F5 25%, #FFFAF5 50%, #F8FAFF 75%, #FFF5F5 100%);
+  position: relative;
+}
+
+.home-page::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(ellipse at 15% 15%, rgba(211, 47, 47, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 80%, rgba(255, 112, 67, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 40%, rgba(100, 140, 220, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-page::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(rgba(100, 140, 220, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 140, 220, 0.025) 1px, transparent 1px);
+  background-size: 80px 80px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .hero-section {
   text-align: center;
-  padding: 64px 24px;
-  background: linear-gradient(135deg, #fff5f5 0%, #fff 50%, #f0f9ff 100%);
+  padding: 64px 24px 48px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-title {
@@ -333,21 +407,23 @@ export default defineComponent({
   font-weight: 700;
   color: #1a1a1a;
   margin-bottom: 12px;
-  background: linear-gradient(135deg, #d32f2f 0%, #1976d2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-subtitle {
   font-size: 18px;
   color: #666;
   margin-bottom: 40px;
+  position: relative;
+  z-index: 1;
 }
 
 .input-section {
   max-width: 800px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .prompt-input {
@@ -359,6 +435,8 @@ export default defineComponent({
 .prompt-input :deep(.ant-input) {
   font-size: 16px;
   padding: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
 }
 
 .input-footer {
@@ -380,10 +458,52 @@ export default defineComponent({
   box-shadow: 0 6px 16px rgba(211, 47, 47, 0.4);
 }
 
+.quick-prompts {
+  display: flex;
+  gap: 16px;
+  max-width: 800px;
+  margin: 24px auto 0;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-prompt-card {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 16px 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.quick-prompt-card:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(211, 47, 47, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.quick-prompt-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.quick-prompt-text {
+  font-size: 13px;
+  color: #555;
+  font-weight: 500;
+}
+
 .content-section {
   max-width: 1200px;
   margin: 0 auto;
   padding: 40px 24px;
+  position: relative;
+  z-index: 1;
 }
 
 .app-section {
@@ -414,17 +534,21 @@ export default defineComponent({
 }
 
 .app-card {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .app-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(211, 47, 47, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .app-cover {
@@ -477,53 +601,58 @@ export default defineComponent({
 }
 
 .action-btn-view {
-  background: #1a1a1a;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .action-btn-view:hover {
-  background: #333;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .action-btn-chat {
-  background: #fff;
-  color: #1a1a1a;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.3);
 }
 
 .action-btn-chat:hover {
-  background: #f5f5f5;
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.4);
 }
 
 .app-info {
-  padding: 16px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-avatar {
+  flex-shrink: 0;
+}
+
+.app-info-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .app-name {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #1a1a1a;
-  margin: 0 0 8px;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.app-time {
-  font-size: 14px;
-  color: #999;
-  margin: 0;
-}
-
-.app-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .app-author {
-  font-size: 14px;
-  color: #666;
+  font-size: 13px;
+  color: #999;
 }
 
 .empty-state {
@@ -547,6 +676,15 @@ export default defineComponent({
 
   .app-grid {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+
+  .quick-prompts {
+    flex-wrap: wrap;
+  }
+
+  .quick-prompt-card {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 140px;
   }
 }
 </style>

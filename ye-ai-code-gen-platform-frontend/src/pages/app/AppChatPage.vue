@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { ref, onMounted, nextTick, computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { getAppById, deployApp, chatToGenCode } from '@/api/appController'
+import { getAppById, deployApp, chatToGenCode, deleteApp } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { renderMarkdown } from '@/utils/markdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,19 @@ const isMyApp = computed(() => {
   if (!app.value?.userId) return true
   return app.value.userId === loginUserStore.loginUser.id
 })
+
+// 是否是管理员
+const isAdmin = computed(() => {
+  return loginUserStore.loginUser.userRole === 'admin'
+})
+
+// 是否可操作（本人或管理员）
+const canOperate = computed(() => {
+  return isMyApp.value || isAdmin.value
+})
+
+// 应用详情弹窗
+const showDetail = ref(false)
 
 // 对话消息
 interface ChatMessage {
@@ -101,7 +115,7 @@ const sendMessage = async (prompt?: string, isAuto = false) => {
     message: content,
   }
   // 从 request.ts 的 baseURL 拼接完整 URL
-  const baseUrl = 'http://localhost:8531/api'
+  const baseUrl = import.meta.env.VITE_API_BASE_URL
   const queryString = new URLSearchParams(params as unknown as Record<string, string>).toString()
   const url = `${baseUrl}/app/chat/gen/code?${queryString}`
 
@@ -157,8 +171,8 @@ const sendMessage = async (prompt?: string, isAuto = false) => {
 // 更新网站预览 URL
 const updateWebsiteUrl = () => {
   if (!app.value) return
-  const baseUrl = 'http://localhost:8531/api'
-  websiteUrl.value = `${baseUrl}/static/${app.value.codeGenType}_${app.value.id}/`
+  const previewDomain = import.meta.env.VITE_PREVIEW_DOMAIN
+  websiteUrl.value = `${previewDomain}/static/${app.value.codeGenType}_${app.value.id}/`
 }
 
 // 部署应用
@@ -169,9 +183,52 @@ const handleDeploy = async () => {
     const res = await deployApp({ appId: app.value.id })
     if (res.data.code === 0 && res.data.data) {
       message.success('部署成功')
-      Modal.success({
-        title: '部署成功',
-        content: `您的应用已成功部署！\n访问地址：${res.data.data}`,
+      const deployUrl = res.data.data as string
+      let modalInstance: ReturnType<typeof Modal.success>
+      modalInstance = Modal.success({
+        title: '',
+        okText: '',
+        width: 440,
+        icon: null,
+        closable: true,
+        content: () => {
+          return h('div', { style: 'padding: 8px 0 16px;' }, [
+            h('div', { style: 'text-align: center; margin-bottom: 24px;' }, [
+              h('div', { style: 'width: 60px; height: 60px; margin: 0 auto 18px; border-radius: 50%; background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(82,196,26,0.25);' }, [
+                h('svg', { width: '30', height: '30', viewBox: '0 0 24 24', fill: 'none' }, [
+                  h('path', { d: 'M5 13l4 4L19 7', stroke: '#fff', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+                ]),
+              ]),
+              h('div', { style: 'font-size: 17px; font-weight: 600; color: #1a1a1a;' }, '网站部署成功！'),
+            ]),
+            h('div', { style: 'font-size: 14px; color: #888; text-align: center; margin-bottom: 22px;' }, '您的网站已成功部署，可以通过以下链接访问'),
+            h('div', { style: 'display: flex; align-items: center; gap: 10px; background: #fafafa; padding: 11px 15px; border-radius: 8px; border: 1px solid #eee;' }, [
+              h('span', { style: 'flex: 1; font-size: 13px; word-break: break-all; color: #D32F2F; line-height: 1.5;' }, deployUrl),
+              h('button', {
+                style: 'flex-shrink: 0; padding: 3px 8px; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-size: 16px; color: #bbb; transition: all 0.2s;',
+                onClick: () => { navigator.clipboard.writeText(deployUrl); message.success('已复制到剪贴板') },
+                onMouseenter: (e: MouseEvent) => { const el = e.target as HTMLElement; el.style.color = '#D32F2F'; el.style.background = '#FFF5F5'; },
+                onMouseleave: (e: MouseEvent) => { const el = e.target as HTMLElement; el.style.color = '#bbb'; el.style.background = 'transparent'; },
+              }, '\uD83D\uDCCB'),
+            ]),
+          ])
+        },
+        footer: () => {
+          return h('div', { style: 'display: flex; justify-content: center; gap: 12px; padding-top: 20px;' }, [
+            h('button', {
+              style: 'min-width: 90px; padding: 7px 26px; border: none; border-radius: 6px; background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.25s;',
+              onClick: () => { window.open(deployUrl, '_blank'); modalInstance?.destroy() },
+              onMouseenter: (e: MouseEvent) => { (e.target as HTMLElement).style.boxShadow = '0 4px 12px rgba(211,47,47,0.35)'; (e.target as HTMLElement).style.transform = 'translateY(-1px)' },
+              onMouseleave: (e: MouseEvent) => { (e.target as HTMLElement).style.boxShadow = ''; (e.target as HTMLElement).style.transform = '' },
+            }, '访问网站'),
+            h('button', {
+              style: 'min-width: 70px; padding: 7px 22px; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #555; font-size: 14px; cursor: pointer; transition: all 0.25s;',
+              onClick: () => { modalInstance?.destroy() },
+              onMouseenter: (e: MouseEvent) => { const el = e.target as HTMLElement; el.style.borderColor = '#D32F2F'; el.style.color = '#D32F2F'; el.style.background = '#FFF5F5' },
+              onMouseleave: (e: MouseEvent) => { const el = e.target as HTMLElement; el.style.borderColor = '#ddd'; el.style.color = '#555'; el.style.background = '#fff' },
+            }, '关闭'),
+          ])
+        },
       })
     } else {
       message.error(res.data.message ?? '部署失败')
@@ -212,7 +269,33 @@ const goToEdit = () => {
 // 查看部署的作品
 const viewWork = () => {
   if (!app.value || !app.value.deployKey) return
-  window.open(`http://localhost/${app.value.deployKey}`, '_blank')
+  const deployDomain = import.meta.env.VITE_DEPLOY_DOMAIN
+  window.open(`${deployDomain}/${app.value.deployKey}/`, '_blank')
+}
+
+// 删除应用
+const handleDelete = () => {
+  if (!app.value) return
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除应用「${app.value.appName}」吗？删除后不可恢复。`,
+    okText: '确认删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = await deleteApp({ id: app.value!.id })
+        if (res.data.code === 0) {
+          message.success('删除成功')
+          router.push('/')
+        } else {
+          message.error(res.data.message ?? '删除失败')
+        }
+      } catch {
+        message.error('删除失败')
+      }
+    },
+  })
 }
 
 onMounted(() => {
@@ -236,6 +319,11 @@ onMounted(() => {
           @click="viewWork"
           v-if="app && app.deployKey"
         >查看作品</a-button>
+        <a-button
+          type="default"
+          @click="showDetail = true"
+          v-if="app"
+        >应用详情</a-button>
         <a-button type="default" @click="goToEdit" v-if="app && isMyApp">编辑</a-button>
         <a-button
           type="primary"
@@ -245,6 +333,33 @@ onMounted(() => {
         >部署</a-button>
       </div>
     </div>
+
+    <!-- 应用详情弹窗 -->
+    <a-modal
+      v-model:open="showDetail"
+      title="应用详情"
+      :footer="null"
+      centered
+      width="400px"
+    >
+      <div class="app-detail-panel" v-if="app">
+        <div class="detail-section">
+          <div class="detail-creator">
+            <a-avatar :src="app.user?.userAvatar" size="small" />
+            <span class="creator-name">{{ app.user?.userName || '未知用户' }}</span>
+          </div>
+          <div class="detail-time">{{ app.createTime }}</div>
+        </div>
+        <div class="detail-actions" v-if="canOperate">
+          <a-button type="default" @click="goToEdit(); showDetail = false">
+            修改
+          </a-button>
+          <a-button type="primary" danger @click="handleDelete(); showDetail = false">
+            删除
+          </a-button>
+        </div>
+      </div>
+    </a-modal>
 
     <!-- 主内容区 -->
     <div class="chat-main">
@@ -258,7 +373,22 @@ onMounted(() => {
                   <a-avatar :src="loginUserStore.loginUser.userAvatar" size="small" />
                 </template>
                 <template v-else>
-                  <a-avatar size="small" style="background: #1976d2">AI</a-avatar>
+                  <a-avatar size="small" class="ai-avatar">
+                    <template #icon>
+                      <svg viewBox="0 0 200 200" width="20" height="20">
+                        <defs>
+                          <linearGradient id="aiAvatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#D32F2F" />
+                            <stop offset="100%" style="stop-color:#FF7043" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M100 30 L120 50 L145 45 L135 70 L160 80 L140 100 L160 120 L135 130 L145 155 L120 150 L100 170 L80 150 L55 155 L65 130 L40 120 L60 100 L40 80 L65 70 L55 45 L80 50 Z" fill="url(#aiAvatarGrad)" stroke="#C62828" stroke-width="2"/>
+                        <path d="M100 50 L100 150" stroke="#FFEBEE" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M100 70 L85 55 M100 90 L75 75 M100 110 L75 125 M100 130 L85 145" stroke="#FFEBEE" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M100 70 L115 55 M100 90 L125 75 M100 110 L125 125 M100 130 L115 145" stroke="#FFEBEE" stroke-width="1.5" stroke-linecap="round"/>
+                      </svg>
+                    </template>
+                  </a-avatar>
                 </template>
               </div>
               <div class="message-content">
@@ -271,7 +401,12 @@ onMounted(() => {
                   </div>
                 </template>
                 <template v-else>
-                  <div class="message-text">{{ msg.content }}</div>
+                  <div
+                    v-if="msg.role === 'assistant'"
+                    class="message-text markdown-body"
+                    v-html="renderMarkdown(msg.content)"
+                  ></div>
+                  <div v-else class="message-text">{{ msg.content }}</div>
                 </template>
               </div>
             </div>
@@ -291,7 +426,7 @@ onMounted(() => {
             <template v-else>
               <a-textarea
                 v-model:value="userInput"
-                placeholder="输入您的需求，继续优化应用..."
+                placeholder="请描述你想生成的网站，越详细效果越好哦"
                 :rows="3"
                 @keydown.enter.prevent="!isGenerating && sendMessage()"
                 class="chat-input"
@@ -396,7 +531,7 @@ onMounted(() => {
 }
 
 .chat-panel {
-  flex: 1;
+  flex: 2;
   display: flex;
   flex-direction: column;
   border-right: 1px solid #e8e8e8;
@@ -408,11 +543,11 @@ onMounted(() => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 16px;
 }
 
 .message-wrapper {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .message {
@@ -428,6 +563,13 @@ onMounted(() => {
 
 .message-avatar {
   flex-shrink: 0;
+}
+
+.ai-avatar {
+  background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .message-content {
@@ -450,7 +592,7 @@ onMounted(() => {
 }
 
 .message.user .message-text {
-  background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%);
+  background: linear-gradient(135deg, #D32F2F 0%, #FF7043 100%);
   color: #fff;
   text-align: left;
 }
@@ -464,7 +606,7 @@ onMounted(() => {
 .typing-indicator span {
   width: 8px;
   height: 8px;
-  background: #1976d2;
+  background: #D32F2F;
   border-radius: 50%;
   animation: typing 1.4s infinite ease-in-out;
 }
@@ -495,7 +637,7 @@ onMounted(() => {
 }
 
 .chat-input-wrapper {
-  padding: 16px 24px;
+  padding: 12px 16px;
   border-top: 1px solid #e8e8e8;
   background: #fff;
 }
@@ -525,7 +667,7 @@ onMounted(() => {
 }
 
 .preview-panel {
-  flex: 1;
+  flex: 3;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -579,4 +721,202 @@ onMounted(() => {
     height: 50%;
   }
 }
+</style>
+
+<style>
+/* 部署成功弹窗 - 修正左右对称 */
+.ant-modal .ant-modal-body {
+  padding: 24px !important;
+}
+
+.ant-modal .ant-modal-footer {
+  padding: 0 24px 20px !important;
+}
+
+.app-detail-panel {
+  padding: 8px 0;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-creator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.creator-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.detail-time {
+  font-size: 13px;
+  color: #999;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Markdown 渲染样式 */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #333;
+  word-break: break-word;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 18px; }
+.markdown-body h3 { font-size: 16px; }
+.markdown-body h4 { font-size: 15px; }
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.markdown-body li {
+  margin: 4px 0;
+}
+
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 8px 16px;
+  border-left: 4px solid #D32F2F;
+  background: #FFF5F5;
+  color: #555;
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-body code {
+  padding: 2px 6px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  color: #d63384;
+}
+
+.markdown-body pre {
+  margin: 10px 0;
+  padding: 0;
+  background: #1e1e2e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.markdown-body pre code {
+  display: block;
+  padding: 14px 18px;
+  background: transparent;
+  color: #cdd6f4;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: auto;
+  border-radius: 0;
+}
+
+.markdown-body table {
+  margin: 10px 0;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.markdown-body hr {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #e8e8e8;
+}
+
+.markdown-body a {
+  color: #D32F2F;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+/* highlight.js 代码高亮 - Catppuccin Mocha 风格 */
+.markdown-body pre code .hljs-keyword { color: #cba6f7; }
+.markdown-body pre code .hljs-built_in { color: #f38ba8; }
+.markdown-body pre code .hljs-type { color: #fab387; }
+.markdown-body pre code .hljs-literal { color: #fab387; }
+.markdown-body pre code .hljs-number { color: #fab387; }
+.markdown-body pre code .hljs-string { color: #a6e3a1; }
+.markdown-body pre code .hljs-regexp { color: #f5e0dc; }
+.markdown-body pre code .hljs-symbol { color: #f5e0dc; }
+.markdown-body pre code .hljs-class { color: #f9e2af; }
+.markdown-body pre code .hljs-function { color: #89b4fa; }
+.markdown-body pre code .hljs-title { color: #89b4fa; }
+.markdown-body pre code .hljs-params { color: #cdd6f4; }
+.markdown-body pre code .hljs-comment { color: #6c7086; font-style: italic; }
+.markdown-body pre code .hljs-doctag { color: #f38ba8; }
+.markdown-body pre code .hljs-meta { color: #fab387; }
+.markdown-body pre code .hljs-section { color: #89b4fa; }
+.markdown-body pre code .hljs-tag { color: #cba6f7; }
+.markdown-body pre code .hljs-name { color: #cba6f7; }
+.markdown-body pre code .hljs-attr { color: #89b4fa; }
+.markdown-body pre code .hljs-attribute { color: #a6e3a1; }
+.markdown-body pre code .hljs-variable { color: #cdd6f4; }
+.markdown-body pre code .hljs-bullet { color: #f5e0dc; }
+.markdown-body pre code .hljs-code { color: #a6e3a1; }
+.markdown-body pre code .hljs-emphasis { font-style: italic; }
+.markdown-body pre code .hljs-strong { font-weight: bold; }
+.markdown-body pre code .hljs-formula { color: #cdd6f4; }
+.markdown-body pre code .hljs-link { color: #89b4fa; text-decoration: underline; }
+.markdown-body pre code .hljs-quote { color: #a6e3a1; }
+.markdown-body pre code .hljs-selector-tag { color: #f38ba8; }
+.markdown-body pre code .hljs-selector-id { color: #89b4fa; }
+.markdown-body pre code .hljs-selector-class { color: #a6e3a1; }
+.markdown-body pre code .hljs-selector-attr { color: #cba6f7; }
+.markdown-body pre code .hljs-selector-pseudo { color: #f5e0dc; }
+.markdown-body pre code .hljs-template-tag { color: #cba6f7; }
+.markdown-body pre code .hljs-template-variable { color: #cdd6f4; }
+.markdown-body pre code .hljs-addition { color: #a6e3a1; background: rgba(166, 227, 161, 0.1); }
+.markdown-body pre code .hljs-deletion { color: #f38ba8; background: rgba(243, 139, 168, 0.1); }
 </style>
