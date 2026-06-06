@@ -1,6 +1,7 @@
 package com.yuri.yeaicodegenplatform.core;
 
 import com.yuri.yeaicodegenplatform.ai.AiCodeGeneratorService;
+import com.yuri.yeaicodegenplatform.ai.AiCodeGeneratorServiceFactory;
 import com.yuri.yeaicodegenplatform.ai.model.HtmlCodeResult;
 import com.yuri.yeaicodegenplatform.ai.model.MultiFileCodeResult;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
@@ -25,8 +26,11 @@ import java.io.File;
 @Service
 public class AiCodeGeneratorFacade {
 
+    /* @Resource
+    private AiCodeGeneratorService aiCodeGeneratorService; */
+
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     /**
      * 统一入口：根据类型生成并保存代码（使用 appId）
@@ -39,9 +43,11 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum) {
             case HTML -> {
-                HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(userMessage);
+                HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(1, userMessage);
                 yield CodeFileSaverExecutor.executeSaver(result, CodeGenTypeEnum.HTML, appId);
             }
             case MULTI_FILE -> {
@@ -62,7 +68,9 @@ public class AiCodeGeneratorFacade {
      * @return 保存的目录
      */
     private File generateAndSaveHtmlCode(String userMessage) {
-        HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(userMessage);
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(1);
+        HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode(1, userMessage);
         return CodeFileSaver.saveHtmlCodeResult(result);
     }
 
@@ -73,6 +81,8 @@ public class AiCodeGeneratorFacade {
      * @return 保存的目录
      */
     private File generateAndSaveMultiFileCode(String userMessage) {
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(2);
         MultiFileCodeResult result = aiCodeGeneratorService.generateMultiFileCode(userMessage);
         return CodeFileSaver.saveMultiFileCodeResult(result);
     }
@@ -84,6 +94,8 @@ public class AiCodeGeneratorFacade {
      * @return 保存的目录
      */
     private Flux<String> generateAndSaveHtmlCodeStream(String userMessage) {
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(1);
         Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
         // 当流式返回生成代码完成后，再保存代码
         StringBuilder codeBuilder = new StringBuilder();
@@ -113,6 +125,8 @@ public class AiCodeGeneratorFacade {
      * @return 保存的目录
      */
     private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage) {
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(2);
         Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         // 当流式返回生成代码完成后，再保存代码
         StringBuilder codeBuilder = new StringBuilder();
@@ -146,6 +160,8 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum) {
             case HTML -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);

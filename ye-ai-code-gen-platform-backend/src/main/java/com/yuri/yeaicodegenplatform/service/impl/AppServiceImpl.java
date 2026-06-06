@@ -20,14 +20,17 @@ import com.yuri.yeaicodegenplatform.model.entity.User;
 import com.yuri.yeaicodegenplatform.model.vo.AppVO;
 import com.yuri.yeaicodegenplatform.model.vo.UserVO;
 import com.yuri.yeaicodegenplatform.service.AppService;
+import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
 import com.yuri.yeaicodegenplatform.service.UserService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +38,7 @@ import java.util.stream.Collectors;
  *
  * @author yuri
  */
+@Slf4j
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
@@ -43,6 +47,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -125,14 +132,30 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (!app.getUserId().equals(loginUser.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
         }
-        // 4. 获取应用的代码生成类型
+        // 4. 保存用户消息到对话历史
+        chatHistoryService.saveUserMessage(appId, loginUser.getId(), message);
+        // 5. 获取应用的代码生成类型
         String codeGenTypeStr = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
-        // 5. 调用 AI 生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 6. 调用 AI 生成代码，并保存 AI 回复 / 错误信息到对话历史
+        AtomicReference<String> fullResponse = new AtomicReference<>("");
+        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId)
+                .doOnNext(chunk -> {
+                    fullResponse.updateAndGet(current -> current + chunk);
+                })
+                .doOnComplete(() -> {
+                    String aiMessage = fullResponse.get();
+                    if (StrUtil.isNotBlank(aiMessage)) {
+                        chatHistoryService.saveAiMessage(appId, loginUser.getId(), aiMessage);
+                    }
+                })
+                .doOnError(error -> {
+                    chatHistoryService.saveErrorMessage(appId, loginUser.getId(),
+                            "AI 回复失败: " + error.getMessage());
+                });
     }
 
     @Override
@@ -178,5 +201,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 9. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+    }
+
+    @Override
+    public boolean deleteAppById(Long appId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
+        // 先删除关联的对话历史，失败不影响应用删除
+        try {
+            chatHistoryService.deleteByAppId(appId);
+        } catch (Exception e) {
+            log.error("删除应用 {} 的对话历史失败", appId, e);
+        }
+        // 再删除应用
+        return this.removeById(appId);
     }
 }
