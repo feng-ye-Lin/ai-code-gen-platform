@@ -75,7 +75,8 @@ public class AppController {
         // 应用名暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
         // 暂时设置位多文件生成
-        app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        // app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
         boolean result = appService.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(app.getId());
@@ -309,6 +310,19 @@ public class AppController {
                             .data(jsonData)
                             .build();
                 })
+                /* .onErrorResume(error -> {
+                    // 错误时返回错误事件
+                    log.error("代码生成失败", error);
+                    String errorMsg = error.getMessage() != null ? error.getMessage() : "系统错误";
+                    Map<String, String> errorWrapper = Map.of("error", errorMsg);
+                    String errorData = JSONUtil.toJsonStr(errorWrapper);
+                    return Flux.just(
+                            ServerSentEvent.<String>builder()
+                                    .event("error")
+                                    .data(errorData)
+                                    .build()
+                    );
+                }) */
                 .concatWith(Mono.just(
                         // 发送结束事件
                         ServerSentEvent.<String>builder()
