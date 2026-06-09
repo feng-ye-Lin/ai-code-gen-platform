@@ -3,8 +3,10 @@ import { ref, onMounted, nextTick, computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { getAppById, deployApp, chatToGenCode, deleteApp } from '@/api/appController'
+import { listChatHistoryByPage } from '@/api/chatHistoryController'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { renderMarkdown } from '@/utils/markdown'
+import { CODE_GEN_TYPE_OPTIONS, CodeGenTypeEnum } from '@/constants/codeGenType'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +17,16 @@ const isViewMode = computed(() => route.query.view === '1')
 const app = ref<API.AppVO | null>(null)
 const loadingApp = ref(false)
 const loadingDeploy = ref(false)
+
+// 已加载的历史消息（按 createTime 升序排列的历史消息）
+const historyMessages = ref<ChatMessage[]>([])
+// 游标：下一页使用的 cursor（最早一条历史记录的 id 作为游标）
+const nextCursor = ref<string>('')
+// 是否还有更多历史消息
+const hasMoreHistory = ref(false)
+const loadingHistory = ref(false)
+// 每页加载的历史消息条数
+const HISTORY_PAGE_SIZE = 10
 
 // 是否是自己的作品
 const isMyApp = computed(() => {
@@ -52,16 +64,101 @@ const isGenerating = ref(false)
 const websiteUrl = ref('')
 const showWebsite = ref(false)
 
+// 将后端 ChatHistory 转为前端 ChatMessage
+const chatHistoryToMessage = (item: API.ChatHistory): ChatMessage => {
+  const msgType = item.messageType ?? ''
+  const isUser = msgType.toLowerCase().includes('user')
+  return {
+    role: isUser ? 'user' : 'assistant',
+    content: item.message ?? '',
+    timestamp: item.createTime ? new Date(item.createTime).getTime() : undefined,
+  }
+}
+
+// 加载对话历史
+// - 目标展示顺序：上方老消息，下方新消息（old→new）。
+// - 请求策略：统一按 createTime desc 请求后端分页接口；
+//   首次加载不带 cursor，获取最新一页，前端反转为 old→new。
+//   加载「更早的历史」时带 cursor = 当前已加载中最早一条消息的 createTime，
+//   期望后端返回比该时间更早的下一页（同样是新→旧顺序），前端反转为 old→new 后插入列表顶部。
+// - hasMoreHistory：以 totalRow 为总量上限，只要已加载数量 < 总数就允许继续翻页。
+// - 注意：必须在 app.value 已有值之后才执行，避免预览 URL 依赖 app.id / app.codeGenType。
+const loadHistory = async (cursor?: string) => {
+  if (!appId.value) return
+  loadingHistory.value = true
+  try {
+    const res = await listChatHistoryByPage({
+      appId: appId.value,
+      pageSize: HISTORY_PAGE_SIZE,
+      sortField: 'createTime',
+      sortOrder: 'desc',
+      cursor: cursor || undefined,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      const rawRecords = res.data.data.records ?? []
+      // 后端返回顺序为 new→old（desc），在前端反转为 old→new 的展示顺序
+      const orderedRaw = [...rawRecords].reverse()
+      const records = orderedRaw.map(chatHistoryToMessage)
+
+      if (cursor) {
+        // 更早的历史：插到现有列表顶部
+        historyMessages.value = [...records, ...historyMessages.value]
+      } else {
+        // 首次加载
+        historyMessages.value = records
+      }
+
+      const total = res.data.data.totalRow ?? 0
+      hasMoreHistory.value = historyMessages.value.length < total
+
+      // 下一页游标：当前已加载的最早一条消息的 createTime（rawRecords 最后一个即是本页最老的记录）
+      if (rawRecords.length > 0) {
+        nextCursor.value = rawRecords[rawRecords.length - 1]?.createTime ?? ''
+      }
+
+      // 已有至少 2 条对话历史时展示预览。
+      // 注意：调用方需确保调用 loadHistory 时保证 app.value 已就绪，以避免 updateWebsiteUrl 中 app.value 为 null。
+      if (historyMessages.value.length >= 2 && app.value) {
+        updateWebsiteUrl()
+        showWebsite.value = true
+      }
+
+      // 首次加载完成后滚动到底部
+      if (!cursor) {
+        nextTick(() => {
+          scrollToBottom()
+        })
+      }
+    } else {
+      message.error(res.data.message ?? '加载对话历史失败')
+    }
+  } catch {
+    message.error('加载对话历史失败')
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+// 加载更早的历史消息（按钮位于消息列表顶部）
+const loadMoreHistory = async () => {
+  if (loadingHistory.value || !hasMoreHistory.value) return
+  await loadHistory(nextCursor.value)
+}
+
 // 加载应用信息
+// 执行顺序：先拉取应用详情 -> 再拉取对话历史 -> 保证处理历史消息时 app.value 已就绪，避免预览 URL 构建时 app 为 null。
 const loadApp = async () => {
   if (!appId.value) return
   loadingApp.value = true
+  
   try {
-    const res = await getAppById({ id: appId.value })
-    if (res.data.code === 0 && res.data.data) {
-      app.value = res.data.data
-      // 仅在非查看模式下，自动发送第一条消息
-      if (!isViewMode.value && app.value.initPrompt && messages.value.length === 0) {
+    const appRes = await getAppById({ id: appId.value })
+    if (appRes.data.code === 0 && appRes.data.data) {
+      app.value = appRes.data.data
+      // 先保证 app.value 已就绪后再加载历史
+      await loadHistory()
+      // 再判断是否自动触发 initPrompt 对话：仅当是自己的应用且没有对话历史时
+      if (isMyApp.value && app.value.initPrompt && historyMessages.value.length === 0) {
         await nextTick()
         sendMessage(app.value.initPrompt, true)
       }
@@ -71,7 +168,7 @@ const loadApp = async () => {
         showWebsite.value = true
       }
     } else {
-      message.error(res.data.message ?? '获取应用信息失败')
+      message.error(appRes.data.message ?? '获取应用信息失败')
       router.back()
     }
   } catch {
@@ -173,6 +270,9 @@ const updateWebsiteUrl = () => {
   if (!app.value) return
   const previewDomain = import.meta.env.VITE_PREVIEW_DOMAIN
   websiteUrl.value = `${previewDomain}/static/${app.value.codeGenType}_${app.value.id}/`
+  if (app.value.codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
+    websiteUrl.value += 'dist/index.html'
+  }
 }
 
 // 部署应用
@@ -366,7 +466,18 @@ onMounted(() => {
       <!-- 左侧对话区 -->
       <div class="chat-panel">
         <div class="chat-messages" v-loading="loadingApp">
-          <div v-for="(msg, index) in messages" :key="index" class="message-wrapper">
+          <!-- 加载更多历史消息按钮 -->
+          <div class="load-more-wrapper" v-if="historyMessages.length > 0 || hasMoreHistory">
+            <a-button
+              v-if="hasMoreHistory"
+              type="link"
+              size="small"
+              :loading="loadingHistory"
+              @click="loadMoreHistory"
+            >加载更多历史消息</a-button>
+            <span v-else-if="historyMessages.length > 0" class="no-more-text">暂无更早的对话</span>
+          </div>
+          <div v-for="(msg, index) in historyMessages" :key="'h-' + index" class="message-wrapper">
             <div :class="['message', msg.role]">
               <div class="message-avatar">
                 <template v-if="msg.role === 'user'">
@@ -383,9 +494,38 @@ onMounted(() => {
                           </linearGradient>
                         </defs>
                         <path d="M100 30 L120 50 L145 45 L135 70 L160 80 L140 100 L160 120 L135 130 L145 155 L120 150 L100 170 L80 150 L55 155 L65 130 L40 120 L60 100 L40 80 L65 70 L55 45 L80 50 Z" fill="url(#aiAvatarGrad)" stroke="#C62828" stroke-width="2"/>
-                        <path d="M100 50 L100 150" stroke="#FFEBEE" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M100 70 L85 55 M100 90 L75 75 M100 110 L75 125 M100 130 L85 145" stroke="#FFEBEE" stroke-width="1.5" stroke-linecap="round"/>
-                        <path d="M100 70 L115 55 M100 90 L125 75 M100 110 L125 125 M100 130 L115 145" stroke="#FFEBEE" stroke-width="1.5" stroke-linecap="round"/>
+                      </svg>
+                    </template>
+                  </a-avatar>
+                </template>
+              </div>
+              <div class="message-content">
+                <div
+                  v-if="msg.role === 'assistant'"
+                  class="message-text markdown-body"
+                  v-html="renderMarkdown(msg.content)"
+                ></div>
+                <div v-else class="message-text">{{ msg.content }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-for="(msg, index) in messages" :key="'c-' + index" class="message-wrapper">
+            <div :class="['message', msg.role]">
+              <div class="message-avatar">
+                <template v-if="msg.role === 'user'">
+                  <a-avatar :src="loginUserStore.loginUser.userAvatar" size="small" />
+                </template>
+                <template v-else>
+                  <a-avatar size="small" class="ai-avatar">
+                    <template #icon>
+                      <svg viewBox="0 0 200 200" width="20" height="20">
+                        <defs>
+                          <linearGradient id="aiAvatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#D32F2F" />
+                            <stop offset="100%" style="stop-color:#FF7043" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M100 30 L120 50 L145 45 L135 70 L160 80 L140 100 L160 120 L135 130 L145 155 L120 150 L100 170 L80 150 L55 155 L65 130 L40 120 L60 100 L40 80 L65 70 L55 45 L80 50 Z" fill="url(#aiAvatarGrad)" stroke="#C62828" stroke-width="2"/>
                       </svg>
                     </template>
                   </a-avatar>
@@ -544,6 +684,17 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+}
+
+.load-more-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.no-more-text {
+  font-size: 12px;
+  color: #999;
 }
 
 .message-wrapper {

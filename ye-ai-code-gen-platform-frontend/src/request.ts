@@ -1,11 +1,28 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
+import JSONbig from 'json-bigint'
+
+// 大整数统一按字符串保存，避免超过 Number.MAX_SAFE_INTEGER 的 id 精度丢失
+const JSONBigString = JSONbig({ storeAsString: true, useNativeBigInt: false })
 
 // 创建 Axios 实例
 const myAxios = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 60000,
   withCredentials: true,
+  transformResponse: [
+    (data) => {
+      if (typeof data === 'string') {
+        try {
+          return JSONBigString.parse(data)
+        } catch {
+          // 非 JSON 响应（例如纯文本/空响应）兜底：原样返回
+          return data
+        }
+      }
+      return data
+    },
+  ],
 })
 
 // 全局请求拦截器
@@ -25,10 +42,9 @@ myAxios.interceptors.response.use(
   function (response) {
     const { data } = response
     // 未登录
-    if (data.code === 40100) {
-      // 不是获取用户信息的请求，并且用户目前不是已经在用户登录页面，则跳转到登录页面
+    if (data && data.code === 40100) {
       if (
-        !response.request.responseURL.includes('user/get/login') &&
+        !String(response.request?.responseURL || '').includes('user/get/login') &&
         !window.location.pathname.includes('/user/login')
       ) {
         message.warning('请先登录')

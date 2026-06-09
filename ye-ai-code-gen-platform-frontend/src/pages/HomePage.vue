@@ -80,7 +80,7 @@ const handleCreateApp = async () => {
     })
     if (res.data.code === 0 && res.data.data) {
       message.success('创建成功')
-      router.push(`/app/chat/${res.data.data}`)
+      router.push(`/app/chat/${String(res.data.data)}`)
     } else {
       message.error(res.data.message ?? '创建失败')
     }
@@ -100,8 +100,8 @@ const loadMyApps = async () => {
       myApps.value = res.data.data.records ?? []
       myAppsTotal.value = res.data.data.totalRow ?? 0
     }
-  } catch {
-    console.error('加载我的应用失败', error)
+  } catch (err) {
+    console.error('加载我的应用失败', err)
   } finally {
     myAppsLoading.value = false
   }
@@ -123,9 +123,10 @@ const loadGoodApps = async () => {
   }
 }
 
-// 进入应用对话页面（查看模式）
-const goToApp = (appId: string) => {
-  router.push(`/app/chat/${appId}?view=1`)
+// 进入应用对话页面
+const goToApp = (appId: number | string | undefined) => {
+  if (appId === undefined || appId === null || appId === '') return
+  router.push(`/app/chat/${String(appId)}`)
 }
 
 // 查看部署的作品
