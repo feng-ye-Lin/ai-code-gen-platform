@@ -8,13 +8,13 @@ export enum CodeGenTypeEnum {
 }
 
 /**
- * 代码生成类型枚举
+ * 代码生成类型选项（供 antd Select 使用）
  * 对应后端 CodeGenTypeEnum
  */
 export const CODE_GEN_TYPE_OPTIONS = [
-  [CodeGenTypeEnum.HTML, { label: '原生 HTML 模式', value: 'html' }],
-  [CodeGenTypeEnum.MULTI_FILE, { label: '原生多文件模式', value: 'multi_file' }],
-  [CodeGenTypeEnum.VUE_PROJECT, { label: 'Vue 项目模式', value: 'vue_project' }],
+  { label: '原生 HTML 模式', value: 'html' },
+  { label: '原生多文件模式', value: 'multi_file' },
+  { label: 'Vue 项目模式', value: 'vue_project' },
 ] as const
 
 /**

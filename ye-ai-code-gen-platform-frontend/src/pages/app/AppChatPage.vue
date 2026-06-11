@@ -6,7 +6,8 @@ import { getAppById, deployApp, chatToGenCode, deleteApp } from '@/api/appContro
 import { listChatHistoryByPage } from '@/api/chatHistoryController'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { renderMarkdown } from '@/utils/markdown'
-import { CODE_GEN_TYPE_OPTIONS, CodeGenTypeEnum } from '@/constants/codeGenType'
+import { CODE_GEN_TYPE_OPTIONS, CodeGenTypeEnum, getCodeGenTypeLabel } from '@/constants/codeGenType'
+import request from '@/request'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,6 +18,7 @@ const isViewMode = computed(() => route.query.view === '1')
 const app = ref<API.AppVO | null>(null)
 const loadingApp = ref(false)
 const loadingDeploy = ref(false)
+const loadingDownload = ref(false)
 
 // 已加载的历史消息（按 createTime 升序排列的历史消息）
 const historyMessages = ref<ChatMessage[]>([])
@@ -275,6 +277,83 @@ const updateWebsiteUrl = () => {
   }
 }
 
+// 从 Content-Disposition 响应头解析文件名
+const parseFilenameFromHeader = (contentDisposition: string): string => {
+  if (!contentDisposition) return ''
+  // 兼容 filename="xxx.zip" 和 filename*=UTF-8''xxx 等形式
+  const patterns = [
+    /filename\*\s*=\s*UTF-8''([^;]+)/i,
+    /filename\s*=\s*"([^"]+)"/i,
+    /filename\s*=\s*([^;]+)/i,
+  ]
+  for (const re of patterns) {
+    const match = contentDisposition.match(re)
+    if (match && match[1]) {
+      const raw = match[1].trim()
+      try {
+        return decodeURIComponent(raw)
+      } catch {
+        return raw
+      }
+    }
+  }
+  return ''
+}
+
+// 从响应头中获取 content-disposition（兼容大小写、Axios Headers 多种形式）
+const getContentDisposition = (headers: Record<string, unknown> | undefined): string => {
+  if (!headers) return ''
+  // 直接索引访问（覆盖普通对象）
+  const direct = (headers as Record<string, string>)['content-disposition']
+  if (direct) return direct
+  // 大小写不敏感查找
+  for (const [key, value] of Object.entries(headers as Record<string, string>)) {
+    if (key.toLowerCase() === 'content-disposition') return value
+  }
+  // AxiosHeaders.get 方法兜底
+  try {
+    const h = headers as { get?: (k: string) => string }
+    if (typeof h.get === 'function') {
+      return h.get('content-disposition') as string
+    }
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+// 下载应用代码
+const handleDownloadCode = async () => {
+  if (!app.value) return
+  if (!isMyApp.value) {
+    message.warning('仅应用所有者可下载代码')
+    return
+  }
+  loadingDownload.value = true
+  try {
+    const res = await request.get(`/app/download/${app.value.id}`, {
+      responseType: 'blob',
+    })
+    const blob = res.data as Blob
+    const contentDisposition = getContentDisposition(res.headers as Record<string, unknown>)
+    let filename = parseFilenameFromHeader(contentDisposition) || `${app.value.id || 'app'}.zip`
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'app_' + filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    message.success('下载成功')
+  } catch {
+    message.error('下载失败')
+  } finally {
+    loadingDownload.value = false
+  }
+}
+
 // 部署应用
 const handleDeploy = async () => {
   if (!app.value) return
@@ -410,7 +489,12 @@ onMounted(() => {
       <div class="header-left">
         <a-button type="text" @click="router.back()">返回</a-button>
         <div class="app-info-header">
-          <h1 class="app-name">{{ app?.appName || '加载中...' }}</h1>
+          <div class="app-name-row">
+            <h1 class="app-name">{{ app?.appName || '加载中...' }}</h1>
+            <a-tag v-if="app?.codeGenType" color="blue" class="app-type-tag">
+              {{ getCodeGenTypeLabel(app.codeGenType) }}
+            </a-tag>
+          </div>
         </div>
       </div>
       <div class="header-right">
@@ -425,6 +509,31 @@ onMounted(() => {
           v-if="app"
         >应用详情</a-button>
         <a-button type="default" @click="goToEdit" v-if="app && isMyApp">编辑</a-button>
+        <a-tooltip title="下载代码" placement="top" v-if="app && isMyApp">
+          <a-button
+            type="default"
+            :disabled="!isMyApp"
+            :loading="loadingDownload"
+            @click="handleDownloadCode"
+          >
+            <template #icon>
+              <svg viewBox="64 64 896 896" width="1em" height="1em" fill="currentColor" focusable="false" aria-hidden="true">
+                <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z" />
+              </svg>
+            </template>
+          </a-button>
+        </a-tooltip>
+        <a-button
+          type="default"
+          :disabled="true"
+          v-else-if="app && !isMyApp"
+        >
+          <template #icon>
+            <svg viewBox="64 64 896 896" width="1em" height="1em" fill="currentColor" focusable="false" aria-hidden="true">
+              <path d="M505.7 661a8 8 0 0 0 12.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z" />
+            </svg>
+          </template>
+        </a-button>
         <a-button
           type="primary"
           :loading="loadingDeploy"
@@ -449,6 +558,14 @@ onMounted(() => {
             <span class="creator-name">{{ app.user?.userName || '未知用户' }}</span>
           </div>
           <div class="detail-time">{{ app.createTime }}</div>
+        </div>
+        <div class="detail-section" v-if="app.codeGenType">
+          <div class="detail-item">
+            <span class="detail-label">生成类型</span>
+            <a-tag color="blue" class="detail-value">
+              {{ getCodeGenTypeLabel(app.codeGenType) }}
+            </a-tag>
+          </div>
         </div>
         <div class="detail-actions" v-if="canOperate">
           <a-button type="default" @click="goToEdit(); showDetail = false">
@@ -651,10 +768,21 @@ onMounted(() => {
   flex-direction: column;
 }
 
+.app-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .app-name {
   font-size: 18px;
   font-weight: 600;
   margin: 0;
+}
+
+.app-type-tag {
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .header-right {
@@ -908,6 +1036,22 @@ onMounted(() => {
 .detail-time {
   font-size: 13px;
   color: #999;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.detail-value {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .detail-actions {
