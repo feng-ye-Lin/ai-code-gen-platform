@@ -6,7 +6,9 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.yuri.yeaicodegenplatform.ai.AiCodeGenTypeRoutingService;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
 import com.yuri.yeaicodegenplatform.constant.AppConstant;
 import com.yuri.yeaicodegenplatform.core.AiCodeGeneratorFacade;
@@ -15,6 +17,7 @@ import com.yuri.yeaicodegenplatform.core.handler.StreamHandlerExecutor;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
 import com.yuri.yeaicodegenplatform.exception.ErrorCode;
 import com.yuri.yeaicodegenplatform.exception.ThrowUtils;
+import com.yuri.yeaicodegenplatform.model.dto.app.AppAddRequest;
 import com.yuri.yeaicodegenplatform.model.dto.app.AppQueryRequest;
 import com.yuri.yeaicodegenplatform.model.entity.App;
 import com.yuri.yeaicodegenplatform.mapper.AppMapper;
@@ -23,6 +26,7 @@ import com.yuri.yeaicodegenplatform.model.vo.AppVO;
 import com.yuri.yeaicodegenplatform.model.vo.UserVO;
 import com.yuri.yeaicodegenplatform.service.AppService;
 import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
+import com.yuri.yeaicodegenplatform.service.ScreenshotService;
 import com.yuri.yeaicodegenplatform.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +36,6 @@ import reactor.core.publisher.Flux;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -58,6 +61,32 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+    @Resource
+    private ScreenshotService screenshotService;
+
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
+    @Override
+    public Long createApp(AppAddRequest appAddRequest, User loginUser) {
+        ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
+        // 参数校验
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        // 保存应用
+        App app = new App();
+        BeanUtil.copyProperties(appAddRequest, app);
+        app.setUserId(loginUser.getId());
+        // 应用名暂时为 initPrompt 前 12 位
+        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 使用 AI 智能选择代码生成类型
+        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(selectedCodeGenType.getValue());
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
+        return app.getId();
+    }
 
     @Override
     public AppVO getAppVO(App app) {
@@ -209,8 +238,32 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 10. 返回可访问的 URL
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        String appDeployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        // 11. 异步生成截图并更新应用封面
+        generateAppScreenshotAsync(appId, appDeployUrl);
+        return appDeployUrl;
     }
+
+    /**
+     * 异步生成应用截图并更新封面
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    private void generateAppScreenshotAsync(Long appId, String appUrl) {
+        // 使用虚拟线程异步执行
+        Thread.startVirtualThread(() -> {
+            // 调用截图服务生成截图并上传
+            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+            // 更新应用封面字段
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCover(screenshotUrl);
+            boolean updated = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        });
+    }
+
 
     @Override
     public boolean deleteAppById(Long appId) {
@@ -223,5 +276,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         // 再删除应用
         return this.removeById(appId);
+    }
+
+    @Override
+    public void incrementDownloadCount(Long appId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
+        UpdateChain.of(App.class)
+                .setRaw("downloadCount", "COALESCE(downloadCount, 0) + 1")
+                .where(App::getId).eq(appId)
+                .update();
     }
 }

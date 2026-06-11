@@ -72,6 +72,12 @@ public class App implements Serializable {
     private LocalDateTime deployedTime;
 
     /**
+     * 下载次数
+     */
+    @Column("downloadCount")
+    private Long downloadCount;
+
+    /**
      * 优先级
      */
     private Integer priority;
