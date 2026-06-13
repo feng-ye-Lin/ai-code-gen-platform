@@ -3,7 +3,7 @@ package com.yuri.yeaicodegenplatform.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
-import com.yuri.yeaicodegenplatform.ai.tools.FileWriteTool;
+import com.yuri.yeaicodegenplatform.ai.tools.*;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
 import com.yuri.yeaicodegenplatform.exception.ErrorCode;
 import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
@@ -33,11 +33,6 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private StreamingChatModel openAiStreamingChatModel;
-    /* private final StreamingChatModel openAiStreamingChatModel;
-
-    public AiCodeGeneratorServiceFactory(StreamingChatModel openAiStreamingChatModel) {
-        this.openAiStreamingChatModel = openAiStreamingChatModel;
-    } */
 
     @Resource
     private StreamingChatModel reasoningStreamingChatModel;
@@ -47,6 +42,9 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private ToolManager toolManager;
 
     /**
      * AI 服务实例缓存
@@ -133,7 +131,7 @@ public class AiCodeGeneratorServiceFactory {
                     .chatModel(chatModel)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(toolManager.getAllTools())
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                     ))

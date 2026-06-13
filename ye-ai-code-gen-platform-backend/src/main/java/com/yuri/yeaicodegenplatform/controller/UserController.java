@@ -20,6 +20,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.yuri.yeaicodegenplatform.model.entity.User;
 import com.yuri.yeaicodegenplatform.service.UserService;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
