@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed, h } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { getAppById, deployApp, chatToGenCode, deleteApp } from '@/api/appController'
 import { listChatHistoryByPage } from '@/api/chatHistoryController'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { renderMarkdown } from '@/utils/markdown'
+import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 import { CODE_GEN_TYPE_OPTIONS, CodeGenTypeEnum, getCodeGenTypeLabel } from '@/constants/codeGenType'
 import request from '@/request'
 
@@ -65,6 +66,19 @@ const isGenerating = ref(false)
 // 网站预览
 const websiteUrl = ref('')
 const showWebsite = ref(false)
+const previewIframe = ref<HTMLIFrameElement | null>(null)
+
+// 可视编辑
+const isEditMode = ref(false)
+const selectedElementInfo = ref<ElementInfo | null>(null)
+const visualEditor = new VisualEditor({
+  onElementSelected: (info: ElementInfo) => {
+    selectedElementInfo.value = info
+  },
+  onElementCleared: () => {
+    selectedElementInfo.value = null
+  },
+})
 
 // 将后端 ChatHistory 转为前端 ChatMessage
 const chatHistoryToMessage = (item: API.ChatHistory): ChatMessage => {
@@ -183,11 +197,29 @@ const loadApp = async () => {
 
 // 发送消息
 const sendMessage = async (prompt?: string, isAuto = false) => {
-  const content = prompt || userInput.value.trim()
+  let content = prompt || userInput.value.trim()
   if (!content || isGenerating.value) return
+
+  // 如果有选中的元素，将元素信息拼接到提示词中
+  if (selectedElementInfo.value) {
+    let elementContext = `\n\n选中元素信息：`
+    elementContext += `\n- 标签: ${selectedElementInfo.value.tagName.toLowerCase()}\n- 选择器: ${selectedElementInfo.value.selector}`
+    if (selectedElementInfo.value.textContent) {
+      elementContext += `\n- 当前内容: ${selectedElementInfo.value.textContent.substring(0, 100)}`
+    }
+    content = content + elementContext
+  }
 
   if (!isAuto) {
     userInput.value = ''
+  }
+
+  // 发送消息后，清除选中元素并退出编辑模式
+  if (selectedElementInfo.value) {
+    clearSelectedElement()
+  }
+  if (isEditMode.value) {
+    toggleEditMode()
   }
 
   // 添加用户消息
@@ -270,11 +302,13 @@ const sendMessage = async (prompt?: string, isAuto = false) => {
 // 更新网站预览 URL
 const updateWebsiteUrl = () => {
   if (!app.value) return
-  const previewDomain = import.meta.env.VITE_PREVIEW_DOMAIN
-  websiteUrl.value = `${previewDomain}/static/${app.value.codeGenType}_${app.value.id}/`
+  // 使用相对路径，通过 Vite proxy 代理到后端，确保与主站同源（iframe 可被注入脚本）
+  let url = `/static/${app.value.codeGenType}_${app.value.id}/`
   if (app.value.codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
-    websiteUrl.value += 'dist/index.html'
+    url += 'dist/index.html'
   }
+  // 添加时间戳参数强制 iframe 刷新，避免浏览器因 src 未变而不重新加载
+  websiteUrl.value = `${url}?t=${Date.now()}`
 }
 
 // 从 Content-Disposition 响应头解析文件名
@@ -336,7 +370,7 @@ const handleDownloadCode = async () => {
     })
     const blob = res.data as Blob
     const contentDisposition = getContentDisposition(res.headers as Record<string, unknown>)
-    let filename = parseFilenameFromHeader(contentDisposition) || `${app.value.id || 'app'}.zip`
+    const filename = parseFilenameFromHeader(contentDisposition) || `${app.value.id || 'app'}.zip`
 
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -477,8 +511,46 @@ const handleDelete = () => {
   })
 }
 
+// 切换编辑模式
+const toggleEditMode = () => {
+  const iframe = previewIframe.value
+  if (!iframe) {
+    message.warning('请等待页面加载完成')
+    return
+  }
+  const newEditMode = visualEditor.toggleEditMode()
+  isEditMode.value = newEditMode
+}
+
+// 清除选中元素
+const clearSelectedElement = () => {
+  selectedElementInfo.value = null
+  visualEditor.clearSelection()
+}
+
+// iframe 加载完成
+const onIframeLoad = () => {
+  const iframe = previewIframe.value
+  if (iframe) {
+    visualEditor.init(iframe)
+    visualEditor.onIframeLoad()
+  }
+}
+
+// 存储消息处理器引用，以便正确移除监听
+const messageHandler = (event: MessageEvent) => {
+  visualEditor.handleIframeMessage(event)
+}
+
 onMounted(() => {
   loadApp()
+  // 监听 iframe 消息
+  window.addEventListener('message', messageHandler)
+})
+
+onUnmounted(() => {
+  // 清理消息监听
+  window.removeEventListener('message', messageHandler)
 })
 </script>
 
@@ -582,7 +654,7 @@ onMounted(() => {
     <div class="chat-main">
       <!-- 左侧对话区 -->
       <div class="chat-panel">
-        <div class="chat-messages" v-loading="loadingApp">
+        <div class="chat-messages">
           <!-- 加载更多历史消息按钮 -->
           <div class="load-more-wrapper" v-if="historyMessages.length > 0 || hasMoreHistory">
             <a-button
@@ -670,6 +742,33 @@ onMounted(() => {
           </div>
         </div>
         <div class="chat-input-wrapper">
+          <!-- 选中元素信息展示 -->
+          <a-alert
+            v-if="selectedElementInfo"
+            class="selected-element-alert"
+            type="info"
+            banner
+            closable
+            @close="clearSelectedElement"
+          >
+            <template #message>
+              <div class="selected-element-info">
+                <div class="element-header">
+                  <span class="element-tag">&lt;{{ selectedElementInfo.tagName.toLowerCase() }}&gt;</span>
+                  <span v-if="selectedElementInfo.id" class="element-attr">#{{ selectedElementInfo.id }}</span>
+                  <span v-if="selectedElementInfo.className" class="element-attr">.{{ selectedElementInfo.className.split(' ').join('.') }}</span>
+                </div>
+                <div class="element-details">
+                  <div v-if="selectedElementInfo.textContent" class="element-detail-item">
+                    内容: {{ selectedElementInfo.textContent.slice(0, 50) }}{{ selectedElementInfo.textContent.length > 50 ? '...' : '' }}
+                  </div>
+                  <div class="element-detail-item">
+                    选择器: <code class="element-selector-code">{{ selectedElementInfo.selector }}</code>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </a-alert>
           <div class="chat-input-container">
             <a-tooltip v-if="!isMyApp" title="无法在别人的作品下对话哦~" placement="top">
               <a-textarea
@@ -691,6 +790,13 @@ onMounted(() => {
               />
             </template>
             <div class="input-actions">
+            <a-button
+              v-if="isMyApp && showWebsite"
+              :type="isEditMode ? 'primary' : 'default'"
+              @click="toggleEditMode"
+            >
+              {{ isEditMode ? '退出编辑' : '编辑' }}
+            </a-button>
             <a-button
               v-if="isMyApp && isGenerating"
               type="default"
@@ -720,7 +826,7 @@ onMounted(() => {
         </div>
         <div class="preview-content">
           <template v-if="showWebsite && websiteUrl">
-            <iframe :src="websiteUrl" class="preview-iframe" title="网站预览" />
+            <iframe :src="websiteUrl" ref="previewIframe" class="preview-iframe" title="网站预览" @load="onIframeLoad" />
           </template>
           <template v-else>
             <div class="preview-placeholder">
@@ -943,6 +1049,67 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.selected-elements-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.selected-element-alert {
+  margin-bottom: 8px;
+}
+
+.selected-element-info {
+  line-height: 1.4;
+}
+
+.element-header {
+  margin-bottom: 4px;
+}
+
+.element-details {
+  margin-top: 4px;
+}
+
+.element-detail-item {
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: #666;
+}
+
+.element-detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.element-selector-code {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  background: #f6f8fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #d73a49;
+  border: 1px solid #e1e4e8;
+}
+
+.element-tag {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-weight: 600;
+  color: #D32F2F;
+}
+
+.element-attr {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  color: #1890ff;
+  margin-left: 2px;
+}
+
+.element-text {
+  color: #666;
+  margin-left: 8px;
+  font-style: italic;
 }
 
 .preview-panel {

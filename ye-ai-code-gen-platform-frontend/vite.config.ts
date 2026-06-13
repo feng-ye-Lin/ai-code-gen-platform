@@ -16,4 +16,12 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    proxy: {
+      '/static': {
+        target: 'http://localhost:8531/api',
+        changeOrigin: true,
+      },
+    },
+  },
 })
