@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
 import com.yuri.yeaicodegenplatform.annotation.AuthCheck;
 import com.yuri.yeaicodegenplatform.common.BaseResponse;
 import com.yuri.yeaicodegenplatform.common.DeleteRequest;
@@ -18,7 +17,6 @@ import com.yuri.yeaicodegenplatform.exception.ThrowUtils;
 import com.yuri.yeaicodegenplatform.model.dto.app.*;
 import com.yuri.yeaicodegenplatform.model.entity.App;
 import com.yuri.yeaicodegenplatform.model.entity.User;
-import com.yuri.yeaicodegenplatform.model.enums.UserRoleEnum;
 import com.yuri.yeaicodegenplatform.model.vo.AppVO;
 import com.yuri.yeaicodegenplatform.service.AppService;
 import com.yuri.yeaicodegenplatform.service.ProjectDownloadService;
@@ -26,8 +24,8 @@ import com.yuri.yeaicodegenplatform.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.apache.ibatis.javassist.compiler.CodeGen;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -176,6 +174,11 @@ public class AppController {
      * @return 精选应用列表
      */
     @PostMapping("/good/list/page/vo")
+    @Cacheable(
+            value = "good_app_page",
+            key = "T(com.yupi.yuaicodemother.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
+            condition = "#appQueryRequest.pageNum <= 10"
+    )
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         long pageSize = appQueryRequest.getPageSize();
