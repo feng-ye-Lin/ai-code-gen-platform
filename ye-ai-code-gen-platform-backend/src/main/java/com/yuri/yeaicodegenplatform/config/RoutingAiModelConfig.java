@@ -1,7 +1,7 @@
 package com.yuri.yeaicodegenplatform.config;
 
-import dev.langchain4j.model.chat.StreamingChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -9,14 +9,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
 /**
- * 推理专用流式模型配置
+ * 智能路由专用模型配置
  * @author yuri
- * @create 2026-06-07 22:21
+ * @create 2026-06-16 22:55
  */
 @Data
 @Configuration
-@ConfigurationProperties(prefix = "langchain4j.open-ai.reasoning-streaming-chat-model")
-public class ReasoningStreamingChatModelConfig {
+@ConfigurationProperties(prefix = "langchain4j.open-ai.routing-chat-model")
+public class RoutingAiModelConfig {
 
     private String baseUrl;
 
@@ -33,13 +33,13 @@ public class ReasoningStreamingChatModelConfig {
     private Boolean logResponses = false;
 
     /**
-     * 推理流式模型（用于 Vue 项目生成，带工具调用）
+     * 创建用于路由判断的 ChatModel
      * @return
      */
     @Bean
     @Scope("prototype")
-    public StreamingChatModel reasoningStreamingChatModel() {
-        return OpenAiStreamingChatModel.builder()
+    public ChatModel routingChatModelPrototype() {
+        return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .modelName(modelName)
