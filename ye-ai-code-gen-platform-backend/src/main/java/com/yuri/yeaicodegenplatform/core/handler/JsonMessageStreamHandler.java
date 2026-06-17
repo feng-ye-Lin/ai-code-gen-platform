@@ -1,6 +1,5 @@
 package com.yuri.yeaicodegenplatform.core.handler;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -8,7 +7,6 @@ import com.yuri.yeaicodegenplatform.ai.model.message.*;
 import com.yuri.yeaicodegenplatform.ai.tools.BaseTool;
 import com.yuri.yeaicodegenplatform.ai.tools.ToolManager;
 import com.yuri.yeaicodegenplatform.constant.AppConstant;
-import com.yuri.yeaicodegenplatform.core.builder.VueProjectBuilder;
 import com.yuri.yeaicodegenplatform.model.entity.User;
 import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
 import jakarta.annotation.Resource;
@@ -30,8 +28,8 @@ import java.util.Set;
 @Component
 public class JsonMessageStreamHandler {
 
-    @Resource
-    private VueProjectBuilder vueProjectBuilder;
+    /* @Resource
+    private VueProjectBuilder vueProjectBuilder; */
 
     @Resource
     private ToolManager toolManager;
@@ -66,7 +64,7 @@ public class JsonMessageStreamHandler {
                     chatHistoryService.saveAiMessage(appId, loginUser.getId(), aiResponse);
                     // 异步构造 Vue 项目
                     String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
-                    vueProjectBuilder.buildProjectAsync(projectPath);
+                    // vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 .doOnError(error -> {
                     // 如果AI回复失败，也要记录错误消息
