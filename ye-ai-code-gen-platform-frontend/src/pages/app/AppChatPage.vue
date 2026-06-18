@@ -292,6 +292,32 @@ const sendMessage = async (prompt?: string, isAuto = false) => {
       loadingSend.value = false
       message.error('发送消息失败')
     }
+
+    // 处理business-error事件（后端限流等错误）
+    eventSource.value.addEventListener('business-error', (event: MessageEvent) => {
+      try {
+        const errorData = JSON.parse(event.data)
+        console.error('SSE业务错误事件:', errorData)
+
+        // 显示具体的错误信息
+        const errorMessage = errorData.message || '生成过程中出现错误'
+        messages.value[aiMsgIndex].content = `❌ ${errorMessage}`
+        message.error(errorMessage)
+
+        isGenerating.value = false
+        loadingSend.value = false
+        eventSource.value?.close()
+        eventSource.value = null
+      } catch (parseError) {
+        console.error('解析错误事件失败:', parseError, '原始数据:', event.data)
+        messages.value[aiMsgIndex].content = '❌ 服务器返回错误'
+        isGenerating.value = false
+        loadingSend.value = false
+        eventSource.value?.close()
+        eventSource.value = null
+      }
+    })
+
   } catch {
     message.error('发送消息失败')
     isGenerating.value = false
