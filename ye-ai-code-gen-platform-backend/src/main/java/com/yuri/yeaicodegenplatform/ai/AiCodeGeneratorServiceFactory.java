@@ -2,6 +2,7 @@ package com.yuri.yeaicodegenplatform.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.yuri.yeaicodegenplatform.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
 import com.yuri.yeaicodegenplatform.ai.tools.ToolManager;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
@@ -135,6 +136,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools(toolManager.getAllTools())
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))
@@ -148,6 +150,7 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))

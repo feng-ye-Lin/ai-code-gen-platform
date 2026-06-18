@@ -1,5 +1,6 @@
 package com.yuri.yeaicodegenplatform.ai;
 
+import com.yuri.yeaicodegenplatform.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yuri.yeaicodegenplatform.utils.SpringContextUtil;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
@@ -30,6 +31,7 @@ public class AiCodeGenTypeRoutingServiceFactory {
         ChatModel chatModel = SpringContextUtil.getBean("routingChatModelPrototype", ChatModel.class);
         return AiServices.builder(AiCodeGenTypeRoutingService.class)
                 .chatModel(chatModel)
+                .inputGuardrails(new PromptSafetyInputGuardrail())
                 .build();
     }
 
