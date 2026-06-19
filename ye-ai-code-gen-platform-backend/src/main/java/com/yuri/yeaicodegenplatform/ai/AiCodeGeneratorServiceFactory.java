@@ -3,7 +3,6 @@ package com.yuri.yeaicodegenplatform.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yuri.yeaicodegenplatform.ai.guardrail.PromptSafetyInputGuardrail;
-import com.yuri.yeaicodegenplatform.ai.guardrail.RetryOutputGuardrail;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
 import com.yuri.yeaicodegenplatform.ai.tools.ToolManager;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
@@ -143,7 +142,8 @@ public class AiCodeGeneratorServiceFactory {
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools(toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail())
-                        .outputGuardrails(new RetryOutputGuardrail())
+                        // 添加输出护轨，为了流式输出，这里不使用
+                        // .outputGuardrails(new RetryOutputGuardrail())
                         .outputGuardrailsConfig(outputGuardrailsConfig)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
@@ -158,8 +158,10 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
+                        .tools(toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail())
-                        .outputGuardrails(new RetryOutputGuardrail())
+                        // 添加输出护轨，为了流式输出，这里不使用
+                        // .outputGuardrails(new RetryOutputGuardrail())
                         .outputGuardrailsConfig(outputGuardrailsConfig)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
