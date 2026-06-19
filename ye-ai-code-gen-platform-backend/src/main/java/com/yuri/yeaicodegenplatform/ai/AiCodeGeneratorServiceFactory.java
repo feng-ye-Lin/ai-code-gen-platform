@@ -3,6 +3,7 @@ package com.yuri.yeaicodegenplatform.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yuri.yeaicodegenplatform.ai.guardrail.PromptSafetyInputGuardrail;
+import com.yuri.yeaicodegenplatform.ai.guardrail.RetryOutputGuardrail;
 import com.yuri.yeaicodegenplatform.ai.model.enums.CodeGenTypeEnum;
 import com.yuri.yeaicodegenplatform.ai.tools.ToolManager;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
@@ -11,6 +12,7 @@ import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
 import com.yuri.yeaicodegenplatform.utils.SpringContextUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.guardrail.config.OutputGuardrailsConfig;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -127,6 +129,10 @@ public class AiCodeGeneratorServiceFactory {
                 .build();
         // 从数据库加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
+        // 护轨配置最大重试次数
+        OutputGuardrailsConfig outputGuardrailsConfig = OutputGuardrailsConfig.builder()
+                .maxRetries(3)
+                .build();
         // 根据代码生成类型选择不同的模型配置
         return switch (codeGenType) {
             case VUE_PROJECT -> {
@@ -137,6 +143,8 @@ public class AiCodeGeneratorServiceFactory {
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools(toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail())
+                        .outputGuardrails(new RetryOutputGuardrail())
+                        .outputGuardrailsConfig(outputGuardrailsConfig)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))
@@ -151,6 +159,8 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
                         .inputGuardrails(new PromptSafetyInputGuardrail())
+                        .outputGuardrails(new RetryOutputGuardrail())
+                        .outputGuardrailsConfig(outputGuardrailsConfig)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))
