@@ -144,7 +144,9 @@ public class AiCodeGeneratorServiceFactory {
                         .inputGuardrails(new PromptSafetyInputGuardrail())
                         // 添加输出护轨，为了流式输出，这里不使用
                         // .outputGuardrails(new RetryOutputGuardrail())
-                        .outputGuardrailsConfig(outputGuardrailsConfig)
+                        // .outputGuardrailsConfig(outputGuardrailsConfig)
+                        // 最多连续调用 20 次工具
+                        .maxSequentialToolsInvocations(20)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))
@@ -158,11 +160,10 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
-                        .tools(toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail())
                         // 添加输出护轨，为了流式输出，这里不使用
                         // .outputGuardrails(new RetryOutputGuardrail())
-                        .outputGuardrailsConfig(outputGuardrailsConfig)
+                        // .outputGuardrailsConfig(outputGuardrailsConfig)
                         .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                                 toolExecutionRequest, "Error:there is no tool called " + toolExecutionRequest.name()
                         ))
