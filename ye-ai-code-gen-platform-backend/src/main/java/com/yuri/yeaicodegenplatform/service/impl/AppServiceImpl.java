@@ -18,13 +18,15 @@ import com.yuri.yeaicodegenplatform.core.handler.StreamHandlerExecutor;
 import com.yuri.yeaicodegenplatform.exception.BusinessException;
 import com.yuri.yeaicodegenplatform.exception.ErrorCode;
 import com.yuri.yeaicodegenplatform.exception.ThrowUtils;
+import com.yuri.yeaicodegenplatform.mapper.AppMapper;
 import com.yuri.yeaicodegenplatform.model.dto.app.AppAddRequest;
 import com.yuri.yeaicodegenplatform.model.dto.app.AppQueryRequest;
 import com.yuri.yeaicodegenplatform.model.entity.App;
-import com.yuri.yeaicodegenplatform.mapper.AppMapper;
 import com.yuri.yeaicodegenplatform.model.entity.User;
 import com.yuri.yeaicodegenplatform.model.vo.AppVO;
 import com.yuri.yeaicodegenplatform.model.vo.UserVO;
+import com.yuri.yeaicodegenplatform.monitor.MonitorContext;
+import com.yuri.yeaicodegenplatform.monitor.MonitorContextHolder;
 import com.yuri.yeaicodegenplatform.service.AppService;
 import com.yuri.yeaicodegenplatform.service.ChatHistoryService;
 import com.yuri.yeaicodegenplatform.service.ScreenshotService;
@@ -36,7 +38,10 @@ import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -80,7 +85,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         // 应用名暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 使用 AI 智能选择代码生成类型
+        // 使用 AI 智能选择代码生成类型（多例模式）
         AiCodeGenTypeRoutingService routingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
         CodeGenTypeEnum selectedCodeGenType = routingService.routeCodeGenType(initPrompt);
         app.setCodeGenType(selectedCodeGenType.getValue());
@@ -179,10 +184,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
-        // 6. 调用 AI 生成代码（流式）
+        // 6. 设置监控上下文
+        MonitorContextHolder.setContext(
+                MonitorContext.builder()
+                        .userId(loginUser.getId().toString())
+                        .appId(appId.toString())
+                        .build()
+        );
+        // 7. 调用 AI 生成代码（流式）
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集 AI 响应内容并在完成后记录到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        // 8. 收集 AI 响应内容并在完成后记录到对话历史
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum)
+                .doFinally(signalType -> {
+                    // 流结束时清理（无论成功/失败/取消）
+                    MonitorContextHolder.clearContext();
+                });
     }
 
     @Override
